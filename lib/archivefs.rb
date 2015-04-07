@@ -201,7 +201,7 @@ module ArchiveFS
       #io = ::StringIO.new(parent.read_file(root))
       #@zf = ::Zip::File.new('', true, true)
       #@zf.read_from_stream(io)
-      @zf = ::Zip::File.new(File.join(parent.root + root))
+      @zf = ::Zip::File.new(File.join(parent.root, root))
     end
 
     def do_file?(path)
