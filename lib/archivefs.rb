@@ -31,6 +31,12 @@ require 'rfusefs'
 require 'zip/filesystem'
 
 module ArchiveFS
+  def self.full_split(path)
+    dirname, basename = File.split(path)
+    return [basename] if basename.eql?(path)
+    full_split(dirname) << basename
+  end
+
   class NormalDir
     attr_reader :root
 
@@ -44,7 +50,7 @@ module ArchiveFS
         if child_prefix
           h[child_prefix]
         else
-          tail = File.split(path)
+          tail = ArchiveFS::full_split(path)
           head = []
           while tail.size > 0
             head << tail.shift
