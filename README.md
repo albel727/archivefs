@@ -6,6 +6,9 @@ It's different from other "archive mounters" in this regard, since it isn't limi
 It's just a sloppy implementation from ready-made parts, that I quickly slapped together, out of despair with MPD's zip file support.
 Only zip archives with .zip extension are supported at the moment, and reads cause whole files to be extracted.
 
+The encoding of filenames in zip files is attempted to be guessed and transcoded to the system-wide filesystem encoding.
+Failure to do so presently means that the archive can't be browsed at all.
+
 ## Installation
 
     $ gem install archivefs

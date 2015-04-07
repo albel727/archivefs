@@ -27,10 +27,14 @@ require 'singleton'
 require 'stringio'
 
 require 'bundler/setup'
+require 'rchardet'
 require 'rfusefs'
 require 'zip/filesystem'
 
 module ArchiveFS
+  FILESYSTEM_ENCODING = Encoding.find('filesystem')
+  BINARY_ENCODING = Encoding.find('binary')
+
   def self.full_split(path)
     dirname, basename = File.split(path)
     return [basename] if basename.eql?(path)
@@ -202,44 +206,128 @@ module ArchiveFS
   end
 
   class ZipDir < NormalDir
+
+    # Returns array of arrays with contents for all directories.
+    def self.recursive_entries(f, d, parent = '/')
+      return [] unless f.directory?(parent)
+      e = d.entries(parent)
+      e.flat_map do |en|
+        recursive_entries(f, d, f.join(parent, en))
+      end << e
+    end
+
     def initialize(root, parent)
       super
       #io = ::StringIO.new(parent.read_file(root))
       #@zf = ::Zip::File.new('', true, true)
       #@zf.read_from_stream(io)
       @zf = ::Zip::File.new(File.join(parent.root, root))
+
+      all_entries = ZipDir::recursive_entries(@zf.file, @zf.dir)
+
+      # All zip entries should remain binary-encoded. They actually are,
+      # but the rubyzip lib fails to preserve this fact by concatenating
+      # them with empty strings and slashes, encoded with Ruby's default
+      # encoding (normally UTF-8), and if the result looks sufficiently
+      # like UTF-8, so becomes the resulting encoding. This leads
+      # @zf.dir.entries() to returning a mix of ASCII-8BIT
+      # (where the result happened to not look like UTF-8)
+      # and UTF-8 strings. Let's make everything back into ASCII-8BIT.
+      all_entries = all_entries.map do |dir|
+        dir.map do |e|
+          e.dup.force_encoding(BINARY_ENCODING)
+        end
+      end
+
+      # Attempt to detect encoding from all filenames concatenated
+      @encoding = CharDet.detect(all_entries.flatten(1).join)['encoding']
+
+      @name_fs_to_zip = {}
+      @name_zip_to_fs = {}
+
+      # Populate maps with all existing parts.
+      all_entries.each do |dir|
+        trans_dir = dir.map do |path_component|
+          # This may throw an exception, if we detected encoding incorrectly.
+          transcoded_component = transcode_component_zip_to_fs(path_component)
+          next path_component if transcoded_component.eql?(path_component)
+          @name_fs_to_zip[transcoded_component] = path_component
+          @name_zip_to_fs[path_component] = transcoded_component
+        end
+
+        # Detect if undefined character replacement during
+        # transcoding conflated some names within a directory.
+        unless dir.size == trans_dir.uniq.size
+          raise 'Transcoding led to name ambiguity'
+        end
+      end
     end
 
     def do_file?(path)
+      path = transcode_path_fs_to_zip(path)
       @zf.file.file?(path)
     end
 
     def do_directory?(path)
+      path = transcode_path_fs_to_zip(path)
       @zf.file.directory?(path)
     end
 
     def do_contents(path)
-      @zf.dir.entries(path)
+      path = transcode_path_fs_to_zip(path)
+      @zf.dir.entries(path).map {|f| transcode_component_zip_to_fs(f)}
     end
 
     def do_read_file(path)
-      @zf.file.read(path).force_encoding('BINARY')
+      path = transcode_path_fs_to_zip(path)
+      @zf.file.read(path).force_encoding(BINARY_ENCODING)
     end
 
     def do_size(path)
+      path = transcode_path_fs_to_zip(path)
       @zf.file.size(path)
     end
 
     def do_executable?(path)
+      path = transcode_path_fs_to_zip(path)
       @zf.file.executable?(path)
     end
 
     def do_exists?(path)
+      path = transcode_path_fs_to_zip(path)
       @zf.file.exists?(path)
     end
 
     def raw_open(path,mode,rfusefs = nil)
       nil
+    end
+
+    private
+
+    def transcode_component_zip_to_fs(path_component)
+      # Force binary encoding, since the map has binary keys only.
+      path_component = path_component.dup.force_encoding(BINARY_ENCODING)
+      @name_zip_to_fs[path_component] ||
+          path_component.encode(
+              FILESYSTEM_ENCODING,
+              @encoding,
+              :undef => :replace,
+          )
+    end
+
+    def transcode_component_fs_to_zip(path_component)
+      @name_fs_to_zip[path_component] ||
+          path_component.encode(
+              @encoding,
+              :undef => :replace,
+              :invalid => :replace,
+          ).dup.force_encoding(BINARY_ENCODING)
+    end
+
+    def transcode_path_fs_to_zip(path)
+      @zf.file.join(*ArchiveFS::full_split(path).map do |path_component|
+        transcode_component_fs_to_zip(path_component)
+      end)
     end
   end
 
