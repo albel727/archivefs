@@ -20,6 +20,7 @@
     along with ArchiveFS.  If not, see <http://www.gnu.org/licenses/>.
 =end
 
+require 'bundler/setup'
 require 'archivefs'
 
 FuseFS.main(ARGV, [], '', 'directory_with_archives') do |options|
