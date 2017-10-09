@@ -331,16 +331,23 @@ module ArchiveFS
     end
   end
 
-  require 'delegate'
-  class DebugDelegator < SimpleDelegator
+  class DebugDelegator
+    def initialize(obj)
+      @obj = obj
+    end
+
     def method_missing(name, *args, &block)
-      res = super
+      res = if @obj.respond_to?(name)
+        @obj.send name, *args, &block
+      else
+        super
+      end
       puts "#{name}(#{args.join(', ')}) -> #{res.inspect[0..100]}"
       res
     end
 
     def respond_to_missing?(name, include_private = false)
-      res = super
+      res = @obj.respond_to?(name, include_private)
       puts "?#{name} -> #{res.inspect}"
       res
     end
