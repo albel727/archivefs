@@ -95,6 +95,13 @@ module ArchiveFS
       File.size(das_path(path))
     end
 
+    def do_times(path)
+      stat = File.stat(das_path(path))
+      [stat.atime, stat.mtime, stat.ctime]
+    rescue
+      [0, 0, 0]
+    end
+
     def contents(path)
       if do_directory?(path)
         do_contents(path)
@@ -203,6 +210,10 @@ module ArchiveFS
         end
       end
     end
+
+    def times(path)
+      do_times(path)
+    end
   end
 
   class ZipDir < NormalDir
@@ -221,7 +232,10 @@ module ArchiveFS
       #io = ::StringIO.new(parent.read_file(root))
       #@zf = ::Zip::File.new('', true, true)
       #@zf.read_from_stream(io)
-      @zf = ::Zip::File.new(File.join(parent.root, root))
+      zip_path = File.join(parent.root, root)
+      @zf = ::Zip::File.new(zip_path)
+      stat = File.stat(zip_path)
+      @times = [stat.atime, stat.mtime, stat.ctime]
 
       all_entries = ZipDir::recursive_entries(@zf.file, @zf.dir)
 
@@ -296,6 +310,10 @@ module ArchiveFS
     def do_exists?(path)
       path = transcode_path_fs_to_zip(path)
       @zf.file.exists?(path)
+    end
+
+    def do_times(_path)
+      @times
     end
 
     def raw_open(path,mode,rfusefs = nil)
