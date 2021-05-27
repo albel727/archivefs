@@ -25,5 +25,5 @@ since it isn't limited to a single archive file.}
   spec.add_dependency 'rubyzip', '~> 1.1', '>= 1.1.7'
   spec.add_dependency 'rchardet', '~> 1.6', '>= 1.6.0'
   spec.add_development_dependency 'bundler', '~> 1.7'
-  spec.add_development_dependency 'rake', '~> 10.0'
+  spec.add_development_dependency 'rake', '~> 13.0'
 end
